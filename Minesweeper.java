@@ -2,7 +2,11 @@ import java.util.ArrayList;
 import java.util.Random;
 import java.util.Scanner;
 
-public class Minesweeper {
+import processing.core.PApplet;
+import processing.core.PFont;
+import processing.core.PImage;
+
+public class Minesweeper extends PApplet{
 	public static final int MIN_GRID_DIMENSION = 5;
 	public static final int MAX_GRID_DIMENSION = 10;
 	
@@ -13,24 +17,35 @@ public class Minesweeper {
 	public static final double DIFFICULTY_INTERMEDIATE = 7.0;
 	public static final double DIFFICULTY_EXPERT = 8.0;
 	
+	public static int[][] mineField;
+	public static char[][] unknownTiles; 
+	public static boolean[][] revealedPositions;
+	
+	public static int gridWidth;
+	public static int gridHeight;
+
+	public static final int GUR = 50; //Grid unit ratio
+	
+	PImage img;
+	
 	public static void main(String[] args) {
 		Scanner scnr = new Scanner(System.in);
-		Random rdm = new Random(321);
+		Random rdm = new Random(321); //Seeded for testing!!!
 		
 		System.out.println("Welcome to janky minesweeper, scrub.\n");
-		int gridWidth = promptUserForNumber(scnr, "grid width between " + MIN_GRID_DIMENSION + 
+		gridWidth = promptUserForNumber(scnr, "grid width between " + MIN_GRID_DIMENSION + 
 				" and " + MAX_GRID_DIMENSION, MIN_GRID_DIMENSION, MAX_GRID_DIMENSION);
-		int gridHeight = promptUserForNumber(scnr, "grid height between " + MIN_GRID_DIMENSION + 
+		gridHeight = promptUserForNumber(scnr, "grid height between " + MIN_GRID_DIMENSION + 
 				" and " + MAX_GRID_DIMENSION, MIN_GRID_DIMENSION, MAX_GRID_DIMENSION);
 		
-		int[][] mineField = new int[gridWidth][gridHeight];
-		char[][] unknownTiles = new char [gridWidth][gridHeight];
+		mineField = new int[gridWidth][gridHeight];
+		unknownTiles = new char [gridWidth][gridHeight];
 		for (int i = 0; i < unknownTiles.length; i++) {
 			for (int j = 0; j < unknownTiles[i].length; j++) {
 				unknownTiles[i][j] = '~';
 			} 
 		} //Initialize the unknown mines to have a wave character
-		boolean[][] revealedPositions = new boolean [gridWidth][gridHeight];
+		revealedPositions = new boolean [gridWidth][gridHeight];
 		for (int i = 0; i < revealedPositions.length; i++) {
 			for (int j = 0; j < revealedPositions[i].length; j++) {
 				revealedPositions[i][j] = false;
@@ -41,22 +56,24 @@ public class Minesweeper {
 				+ "Intermediate, or (3)Expert ", MIN_DIFFICULTY, MAX_DIFFICULTY);
 		System.out.println("");
 		
+		PApplet.main("Minesweeper");
+		
 		//Initial position decision and populating of the mineField (should only run once)
-		displayMineField(mineField, unknownTiles, revealedPositions);
+//		displayMineField(mineField, unknownTiles, revealedPositions);
 		System.out.println("");
 		int yPos = promptUserForNumber(scnr, "row to check", 1, gridHeight);
 		int xPos = promptUserForNumber(scnr, "column to check", 1, gridWidth);
-		seedMineField(mineField, rdm, gameDifficulty, xPos, yPos);
-		checkFieldPosition(mineField, unknownTiles, revealedPositions, xPos, yPos);
+		seedMineField(rdm, gameDifficulty, xPos, yPos);
+		checkFieldPosition(xPos, yPos);
 		//Seed/populate, then perform check on the specified start position
 		System.out.println("");
 		
 		//Print out initial state of the mine field for the player
-		displayMineField(mineField, unknownTiles, revealedPositions);
+//		displayMineField(mineField, unknownTiles, revealedPositions);
 		System.out.println("");
 		
 		int userActionChoice = 0;
-		while (!revealedMine(mineField, revealedPositions)) {
+		while (!revealedMine()) {
 			System.out.println("Check a tile (1), or flag/unflag a tile (2)?");
 			userActionChoice = promptUserForNumber(scnr, "your action for this turn", 1, 2);
 			System.out.println("");
@@ -69,12 +86,12 @@ public class Minesweeper {
 							+ " tile to check, or unflag this tile.");
 					continue;
 				} //If a flagged tile is attempted to be revealed, don't let the user check it
-				checkFieldPosition(mineField, unknownTiles, revealedPositions, xPos, yPos);
+				checkFieldPosition(xPos, yPos);
 				break;
 			case 2: //Flag the tile specified
 				xPos = promptUserForNumber(scnr, "row to flag/unflag", 1, gridHeight);
 				yPos = promptUserForNumber(scnr, "column to flag/unflag", 1, gridWidth);
-				flagSquare(unknownTiles, xPos, yPos);
+				flagSquare(xPos, yPos);
 				break;
 			default:
 				System.out.println("ERROR: Try again.");
@@ -83,22 +100,139 @@ public class Minesweeper {
 			
 			//Print out the mine field after each successful user action
 			System.out.println("");
-			displayMineField(mineField, unknownTiles, revealedPositions);
+//			displayMineField(mineField, unknownTiles, revealedPositions);
 			
-			if (winCondition(mineField, revealedPositions)) {
+			if (winCondition()) {
 				System.out.println("\nCongratulations! You win!");
 				break;
 			} //If the player reveals all non-mine tiles, they win (losing message will not trigger)
 		}
 		
 		//If loop ends and a mine was revealed, the losing message plays
-		if (revealedMine(mineField, revealedPositions)) {
+		if (revealedMine()) {
 			System.out.println("\n< Game Over >");
 		}
 	}
+	
 	/**
-	 * This method prints out the mine field to the user using the 3 2D arrays (mineField, 
-	 * unknownTiles, revealedPositions).
+	 * The following method sets Processing's display canvas to 50 pixels
+	 * per grid unit on the X and Y axis. The update method.
+	 */
+	public void settings() { 
+		size(GUR * gridWidth, GUR * gridHeight); 
+	}
+	
+	public void setup() {
+		size(GUR * gridWidth, GUR * gridHeight); 
+		PFont f = createFont("Arial", 12, true);
+		textFont(f, 12);
+		img = loadImage("unnamed.png");
+	}
+	
+	/**
+	 * The following method draws minesweeper grid spaces at the specified
+	 * coordinates x and y with Processing. Note this is designed to 
+	 * correspond to the index values of a 2D array.
+	 * 
+	 * @param x
+	 *            X coordinate at the top left of the rectangle to be drawn.
+	 * @param y
+	 *            Y coordinate at the top left of the rectangle to be drawn.
+	 */
+	public void drawGridSpace(int x, int y) {
+		//Draw outer shade
+		stroke(175);
+		fill(150);
+		rect(x * GUR, y * GUR, GUR, GUR);
+		
+		//Draw inner shade
+		stroke(125);
+		fill(125);
+		rect(x * GUR + 5, y * GUR + 5, 40, 40);
+	}
+	
+	/**
+	 * This method draws minesweeper grid spaces with number values
+	 * at spaces indicated by x and y coordinates, along with a 
+	 * value that has a color associated with it's print.
+	 * 
+	 * @param x
+	 *            X coordinate at the top left of the rectangle to be drawn.
+	 * @param y
+	 *            Y coordinate at the top left of the rectangle to be drawn.
+	 * @param value
+	 * 			  The value of the surrounding number of mines.
+	 */
+	public void drawGridValue(int x, int y, int value) {
+		//Draw BG shade for tile
+		stroke(175);
+		fill(125);
+		rect(x * GUR, y * GUR, GUR, GUR);
+		
+		int xDisplace = 23;
+		int yDisplace = 30;
+		
+		//For each #, draw in the # with specific color in center
+		switch (value) {
+		case 0:
+			//No fill for zero, just empty 
+			break;
+		case 1:
+			fill(0, 0, 175);
+			text("1", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		case 2:
+			fill(0, 225, 0);
+			text("2", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		case 3:
+			fill(225, 0, 0);
+			text("3", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		case 4:
+			fill(0, 0, 225);
+			text("4", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		case 5:
+			fill(225, 55, 55);
+			text("5", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		case 6:
+			fill(0, 100, 225);
+			text("6", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		case 7:
+			fill(225, 25, 150);
+			text("7", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		case 8:
+			fill(225, 150, 25);
+			text("8", x * GUR + xDisplace, y * GUR + yDisplace);
+			break;
+		}
+	}
+	
+	public void drawMine(int x, int y) {
+		int xDisplace = 3;
+		int yDisplace = 3;
+		//Draws the mine image from "unnamed.png", the mine image file
+		image(img, x * GUR + xDisplace, y * GUR + yDisplace, GUR, GUR);	
+	}
+		
+	public void drawFlag(int x, int y) {
+		int xDisplace = 23;
+		int yDisplace = 30;
+		
+		fill(255, 0, 0); 
+		text("?", x * GUR + xDisplace, y * GUR + yDisplace);
+	}
+
+	
+	/**
+	 * This method uses Processing to draw the minefield to 
+	 * the screen along with other parts of the game. 
+	 * It then prints out the mine field to the user using the 3 2D arrays 
+	 * (mineField, unknownTiles, revealedPositions).
 	 * 
 	 * @param mineField
 	 *            The 2D array that holds the values corresponding to mine location.
@@ -109,48 +243,29 @@ public class Minesweeper {
 	 * 			  The 2D array that holds boolean values that reflect whether or not
 	 * 			  the user has revealed the contents of that tile.
 	 */
-	public static void displayMineField(int[][] mineField, char[][] unknownTiles, 
-			boolean[][] revealedPositions) { 
-		System.out.print("  ");
-		for (int j = 0; j < mineField.length; j++) {
-			System.out.print("| " + (j + 1) + " ");
-		} //Print column header
-		System.out.println("");
-		for (int j = 0; j < 3 + (4 * mineField.length); j++) {
-			System.out.print("-");
-		} //Print divider
-		System.out.println("");
+	//Removed to make way for a better display with Processing
+	public void draw() { 
+		background(175);
 		for (int i = 0; i < mineField.length; i++) {
-			if (i < 9) {
-				System.out.print((i + 1) + " ");
-			}
-			else {
-				System.out.print(i + 1);
-			}
 			for (int j = 0; j < mineField[i].length; j++) {
 				if (revealedPositions[i][j]) { //If the position has been revealed
 					if (mineField[i][j] == 0) {
-						System.out.print("|   ");
+						drawGridValue(i, j, 0);
 					} //If no mine, print a space for improved readability
 					else if (mineField[i][j] == 9) {
-						System.out.print("| X "); 
+						drawMine(i, j); 
 					} //If mine, print an X to show the player they have revealed a mine
 					else { 
-						System.out.print("| " + mineField[i][j] + " ");
+						drawGridValue(i, j, mineField[i][j]);
 					} //Else, print the number assigned to that index
 				}
 				else { //If the position has not been revealed
-					System.out.print("| " + unknownTiles[i][j] + " ");
+					drawGridSpace(i, j);
+					if (unknownTiles[i][j] == '?') {
+						drawFlag(i, j);
+					} //Print a flag if one is there
 				}
 			}
-			System.out.println("");
-			if (i == mineField.length - 1) {
-				break; //Don't print a divider for the last line
-			}
-			for (int j = 0; j < 3 + (4 * mineField.length); j++) {
-				System.out.print("-"); //Print divider after each row
-			} 
-			System.out.println("");
 		}
 		return;
 	}
@@ -166,7 +281,7 @@ public class Minesweeper {
 	 * @return The number of mines that the game ought to be initialized to.
 	 */
 
-	public static int determineInitialMines(int[][] mineField, int gameDifficulty) {
+	public static int determineInitialMines(int gameDifficulty) {
 		int minMines = 0;
 		
 		//Determines how many mines will be placed as a function of selected size and difficulty
@@ -205,10 +320,10 @@ public class Minesweeper {
 	 * @param yPos
 	 *            The user-selected initial yPos or row.
 	 */
-	public static void seedMineField(int[][] mineField, Random rdm, 
+	public static void seedMineField(Random rdm, 
 			int gameDifficulty, int xPos, int yPos) {
 		int minesLaid = 0;
-		int minMines = determineInitialMines(mineField, gameDifficulty);
+		int minMines = determineInitialMines(gameDifficulty);
 		int randomConstraint = 0;
 		switch (gameDifficulty) { //Determines the contraint for rdm via difficulty
 		case 1:
@@ -332,8 +447,7 @@ public class Minesweeper {
 	 *            The 2D array that tracks which positions have been revealed by the player.
 	 * @return The boolean indicating whether or not a mine has been revealed.
 	 */
-	public static void checkFieldPosition(int[][] mineField, char[][] unknownTiles, 
-			boolean[][] revealedPositions, int xPos, int yPos) {
+	public static void checkFieldPosition(int xPos, int yPos) {
 		//Adjust user input to array indices
 		xPos -= 1;
 		yPos -= 1;
@@ -362,7 +476,7 @@ public class Minesweeper {
 				//initial x and y position, then adds any tiles revealed
 				//that have value 0 in corresponding mineField indices to the
 				//ArrayLists for further use
-				revealAdjacentTiles(mineField, revealedPositions, 
+				revealAdjacentTiles( 
 						xPos, yPos, xToCheck, yToCheck);
 				xToCheck.add(xPos);
 				yToCheck.add(yPos);
@@ -380,7 +494,7 @@ public class Minesweeper {
 						
 						//For each matching index, run the method
 						//to reveal and check if new 0's are found in the reveal
-						revealAdjacentTiles(mineField, revealedPositions, 
+						revealAdjacentTiles( 
 								xToCheck.get(i), yToCheck.get(i), xToCheck, yToCheck);
 						//If the ArrayLists got new values, the loop conditional will
 						//see that the ArrayList size is not equal to what it was before
@@ -413,8 +527,7 @@ public class Minesweeper {
 	 * 			  ArrayList holding y coordinates of zero-valued indices in mineField
 	 * 			  that the method reveals.
 	 */
-	public static void revealAdjacentTiles(int[][] mineField, 
-			boolean[][] revealedPositions, int xPos, int yPos, 
+	public static void revealAdjacentTiles(int xPos, int yPos, 
 			ArrayList<Integer> xToCheck, ArrayList<Integer> yToCheck) {
 		//Moving cardinally counterclockwise starting at east, check if
 		//that direction's adjacent tile is in bounds, and if it is, set it to be true
@@ -563,8 +676,7 @@ public class Minesweeper {
 	 *            The 2D array that tracks which positions have been revealed by the player.
 	 * @return The boolean indicating whether or not a mine has been revealed.
 	 */
-	public static boolean revealedMine(int[][] mineField, 
-			boolean[][] revealedPositions) {
+	public static boolean revealedMine() {
 		for (int i = 0; i < mineField.length; i++) {
 			for (int j = 0; j < mineField[i].length; j++) {
 				if (mineField[i][j] == 9 && revealedPositions[i][j]) {
@@ -575,7 +687,7 @@ public class Minesweeper {
 		return false; //By default, assume no mines have been revealed
 	}
 	
-	public static void flagSquare(char[][] unknownTiles, int xPos, int yPos) {
+	public static void flagSquare(int xPos, int yPos) {
 		xPos -= 1;
 		yPos -= 1;
 		if (unknownTiles[xPos][yPos] == '~') {
@@ -633,7 +745,7 @@ public class Minesweeper {
 	 * 			  the user has revealed the contents of that tile.
 	 * @return Boolean value representing whether the user wins yet or not.
 	 */
-	public static boolean winCondition (int[][] mineField, boolean[][] revealedPositions) {
+	public static boolean winCondition () {
 		for (int i = 0; i < mineField.length; i++) {
 			for (int j = 0; j < mineField[i].length; j++) {
 				if (!revealedPositions[i][j] && (mineField[i][j] >= 0 && mineField[i][j] < 9)) {
