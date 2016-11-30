@@ -23,14 +23,17 @@ public class Minesweeper extends PApplet{
 	
 	public static int gridWidth;
 	public static int gridHeight;
-
-	public static final int GUR = 50; //Grid unit ratio
+	public static int gameDifficulty;
+	public static Random rdm;
+	public static boolean firstClick;
+	
+	public static final int GUR = 50; //Grid Unit Ratio
 	
 	PImage img;
 	
 	public static void main(String[] args) {
 		Scanner scnr = new Scanner(System.in);
-		Random rdm = new Random(321); //Seeded for testing!!!
+		rdm = new Random(321); //Seeded for testing!!!
 		
 		System.out.println("Welcome to janky minesweeper, scrub.\n");
 		gridWidth = promptUserForNumber(scnr, "grid width between " + MIN_GRID_DIMENSION + 
@@ -52,66 +55,12 @@ public class Minesweeper extends PApplet{
 			}
 		} //Initialize revealed positions false to start since nothing has been revealed
 		
-		int gameDifficulty = promptUserForNumber(scnr, "game difficulty - (1)Beginner, (2)"
+		gameDifficulty = promptUserForNumber(scnr, "game difficulty - (1)Beginner, (2)"
 				+ "Intermediate, or (3)Expert ", MIN_DIFFICULTY, MAX_DIFFICULTY);
 		System.out.println("");
 		
+		firstClick = true;
 		PApplet.main("Minesweeper");
-		
-		//Initial position decision and populating of the mineField (should only run once)
-//		displayMineField(mineField, unknownTiles, revealedPositions);
-		System.out.println("");
-		int yPos = promptUserForNumber(scnr, "row to check", 1, gridHeight);
-		int xPos = promptUserForNumber(scnr, "column to check", 1, gridWidth);
-		seedMineField(rdm, gameDifficulty, xPos, yPos);
-		checkFieldPosition(xPos, yPos);
-		//Seed/populate, then perform check on the specified start position
-		System.out.println("");
-		
-		//Print out initial state of the mine field for the player
-//		displayMineField(mineField, unknownTiles, revealedPositions);
-		System.out.println("");
-		
-		int userActionChoice = 0;
-		while (!revealedMine()) {
-			System.out.println("Check a tile (1), or flag/unflag a tile (2)?");
-			userActionChoice = promptUserForNumber(scnr, "your action for this turn", 1, 2);
-			System.out.println("");
-			switch (userActionChoice) {
-			case 1: //Check the tile specified
-				xPos = promptUserForNumber(scnr, "row to check", 1, gridHeight);
-				yPos = promptUserForNumber(scnr, "column to check", 1, gridWidth);
-				if (unknownTiles[xPos -1][yPos - 1] == '?') {
-					System.out.println("This tile has been flagged. Choose another"
-							+ " tile to check, or unflag this tile.");
-					continue;
-				} //If a flagged tile is attempted to be revealed, don't let the user check it
-				checkFieldPosition(xPos, yPos);
-				break;
-			case 2: //Flag the tile specified
-				xPos = promptUserForNumber(scnr, "row to flag/unflag", 1, gridHeight);
-				yPos = promptUserForNumber(scnr, "column to flag/unflag", 1, gridWidth);
-				flagSquare(xPos, yPos);
-				break;
-			default:
-				System.out.println("ERROR: Try again.");
-				continue;
-			}
-			
-			//Print out the mine field after each successful user action
-			System.out.println("");
-//			displayMineField(mineField, unknownTiles, revealedPositions);
-			
-			if (winCondition()) {
-				System.out.println("\nCongratulations! You win!");
-				break;
-			} //If the player reveals all non-mine tiles, they win (losing message will not trigger)
-		}
-		
-		//If loop ends and a mine was revealed, the losing message plays
-		if (revealedMine()) {
-			System.out.println("\n< Game Over >");
-		}
 	}
 	
 	/**
@@ -148,6 +97,28 @@ public class Minesweeper extends PApplet{
 		//Draw inner shade
 		stroke(125);
 		fill(125);
+		rect(x * GUR + 5, y * GUR + 5, 40, 40);
+	}
+	
+	/**
+	 * The following method draws minesweeper grid spaces at the specified
+	 * coordinates x and y with Processing with brighter color to show the
+	 * player which square they are hovering over.
+	 * 
+	 * @param x
+	 *            X coordinate at the top left of the rectangle to be drawn.
+	 * @param y
+	 *            Y coordinate at the top left of the rectangle to be drawn.
+	 */
+	public void drawHighlightedGridSpace(int x, int y) {
+		//Draw outer shade
+		stroke(150);
+		fill(135);
+		rect(x * GUR, y * GUR, GUR, GUR);
+		
+		//Draw inner shade
+		stroke(110);
+		fill(100);
 		rect(x * GUR + 5, y * GUR + 5, 40, 40);
 	}
 	
@@ -212,6 +183,14 @@ public class Minesweeper extends PApplet{
 		}
 	}
 	
+	/**
+	 * This method draws mines at specified locations
+	 * 
+	 * @param x
+	 *            X coordinate at the top left of the rectangle to be drawn.
+	 * @param y
+	 *            Y coordinate at the top left of the rectangle to be drawn.
+	 */
 	public void drawMine(int x, int y) {
 		int xDisplace = 3;
 		int yDisplace = 3;
@@ -219,6 +198,14 @@ public class Minesweeper extends PApplet{
 		image(img, x * GUR + xDisplace, y * GUR + yDisplace, GUR, GUR);	
 	}
 		
+	/**
+	 * This method draws a "flag" at the specified location
+	 * 
+	 * @param x
+	 *            X coordinate at the top left of the rectangle to be drawn.
+	 * @param y
+	 *            Y coordinate at the top left of the rectangle to be drawn.
+	 */
 	public void drawFlag(int x, int y) {
 		int xDisplace = 23;
 		int yDisplace = 30;
@@ -227,21 +214,38 @@ public class Minesweeper extends PApplet{
 		text("?", x * GUR + xDisplace, y * GUR + yDisplace);
 	}
 
+	/**
+	 * The following method uses mouse clicks (RMB, LMB) to determine whether
+	 * a mine is flagged, unflagged, or checked.
+	 */
+	public void mouseClicked() {
+		//Determine which # tile the mouse is in, by modulating
+		//by the unit size, ex 107 mouseX pixels -> 3rd tile from X
+		int xPos = (mouseX / GUR) + 1; 
+		int yPos = (mouseY / GUR) + 1;
+		
+		if (mouseButton == LEFT) { //LMB reveals tiles
+			if (firstClick) { //On the first click, perform seeding and check
+				seedMineField(xPos, yPos);
+				checkFieldPosition(xPos, yPos);
+				firstClick = false;
+			}
+			checkFieldPosition(xPos, yPos);
+		}
+		else if (mouseButton == RIGHT) { //RMB flags/unflags tiles
+			flagSquare(xPos, yPos);
+		}
+		else { //Don't accept other inputs e.g. middle mouse
+			return;
+		}
+	}
+	
 	
 	/**
 	 * This method uses Processing to draw the minefield to 
 	 * the screen along with other parts of the game. 
 	 * It then prints out the mine field to the user using the 3 2D arrays 
 	 * (mineField, unknownTiles, revealedPositions).
-	 * 
-	 * @param mineField
-	 *            The 2D array that holds the values corresponding to mine location.
-	 * @param unknownTiles
-	 *            The 2D array that holds char values that are printed when a tile has not yet
-	 *            been reveal and can hold flags or waves.
-	 * @param revealedPositions
-	 * 			  The 2D array that holds boolean values that reflect whether or not
-	 * 			  the user has revealed the contents of that tile.
 	 */
 	//Removed to make way for a better display with Processing
 	public void draw() { 
@@ -261,11 +265,28 @@ public class Minesweeper extends PApplet{
 				}
 				else { //If the position has not been revealed
 					drawGridSpace(i, j);
+					
+					//If the mouse is over an unrevealed tile at drawing
+					if (i * GUR < mouseX && mouseX < (i + 1) * GUR 
+							&& j * GUR < mouseY && (j + 1) * GUR > mouseY) {
+						drawHighlightedGridSpace(i, j);
+					} //Highlight the tile to alert the user
+
 					if (unknownTiles[i][j] == '?') {
 						drawFlag(i, j);
 					} //Print a flag if one is there
 				}
 			}
+		}	
+		
+		if (winCondition()) {
+			fill(0, 0, 0);
+			text("You Win!", (gridWidth * GUR)/2 - 25, (gridHeight * GUR) /2);
+		}
+		
+		if (revealedMine()) {
+			fill(0, 0, 0);
+			text("Game Over", (gridWidth * GUR)/2 - 25, (gridHeight * GUR) /2);
 		}
 		return;
 	}
@@ -274,14 +295,10 @@ public class Minesweeper extends PApplet{
 	 * This method determines how many mines should be placed based on the gameDifficulty,
 	 * its corresponding quotient value, and the size of the mineField.
 	 * 
-	 * @param mineField
-	 *            The 2D array that holds the values corresponding to mine location.
-	 * @param gameDifficulty
-	 *            The user-selected game difficulty 1-3.
 	 * @return The number of mines that the game ought to be initialized to.
 	 */
 
-	public static int determineInitialMines(int gameDifficulty) {
+	public static int determineInitialMines() {
 		int minMines = 0;
 		
 		//Determines how many mines will be placed as a function of selected size and difficulty
@@ -308,22 +325,14 @@ public class Minesweeper extends PApplet{
 	 * indexes in order to form a complete underlying mineField array. Should only be 
 	 * called one time in the main method.
 	 * 
-	 * @param mineField
-	 *            The 2D array that will hold index values corresponding to the number
-	 *            of mines adjacent/if the index is a mine.
-	 * @param rdm
-	 *            The Random object that will generate numbers to determine what is a mine.
-	 * @param gameDifficulty
-	 *            The user determined difficulty level 1-3.
 	 * @param xPos
 	 *            The user-selected initial xPos or column.
 	 * @param yPos
 	 *            The user-selected initial yPos or row.
 	 */
-	public static void seedMineField(Random rdm, 
-			int gameDifficulty, int xPos, int yPos) {
+	public static void seedMineField(int xPos, int yPos) {
 		int minesLaid = 0;
-		int minMines = determineInitialMines(gameDifficulty);
+		int minMines = determineInitialMines();
 		int randomConstraint = 0;
 		switch (gameDifficulty) { //Determines the contraint for rdm via difficulty
 		case 1:
@@ -441,11 +450,10 @@ public class Minesweeper extends PApplet{
 	 * 		(5) After making the movement choice above and revealing, we are now on a new
 	 * 			tile whose lower tile has not been confirmed a zero/non-zero
 	 * 
-	 * @param mineField
-	 *            The populated mineField with 0-8 and 9/mines filled in.
-	 * @param revealedPositions
-	 *            The 2D array that tracks which positions have been revealed by the player.
-	 * @return The boolean indicating whether or not a mine has been revealed.
+	 * @param xPos
+	 * 		X position to check.
+	 * @param yPos
+	 * 		Y position to check.
 	 */
 	public static void checkFieldPosition(int xPos, int yPos) {
 		//Adjust user input to array indices
@@ -454,8 +462,7 @@ public class Minesweeper extends PApplet{
 		
 		//If the position has been revealed prior
 		if (revealedPositions[xPos][yPos]) {
-			System.out.println("Already revealed this tile - choose another.");
-			return;
+			return; //Don't do anything if it's revealed already
 		}
 		else { 
 			//If the tile to be revealed is a mine (9) or a non-zero indicator #
@@ -512,10 +519,6 @@ public class Minesweeper extends PApplet{
 	 * contains a 0 in mineField, meaning no mines will be revealed if the up-to 8 adjacent tiles
 	 * are revealed.
 	 * 
-	 * @param mineField
-	 *            The populated mineField with 0-8 and 9/mines filled in.
-	 * @param revealedPositions
-	 *            The 2D array that tracks which positions have been revealed by the player.
 	 * @param xPos
 	 * 			  Initial x position to check.
 	 * @param yPos
@@ -670,10 +673,6 @@ public class Minesweeper extends PApplet{
 	 * This method determines whether or not a mine has been revealed by the user, which
 	 * should end the game if true - should be called at the start of in the game loop.
 	 * 
-	 * @param mineField
-	 *            The populated mineField with 0-8 and 9/mines filled in.
-	 * @param revealedPositions
-	 *            The 2D array that tracks which positions have been revealed by the player.
 	 * @return The boolean indicating whether or not a mine has been revealed.
 	 */
 	public static boolean revealedMine() {
@@ -687,6 +686,15 @@ public class Minesweeper extends PApplet{
 		return false; //By default, assume no mines have been revealed
 	}
 	
+	/**
+	 * This method flags a selected square, or unflags a square if that
+	 * square has already been flagged.
+	 * 
+	 * @param xPos
+	 *            The user-selected initial xPos or column.
+	 * @param yPos
+	 *            The user-selected initial yPos or row.
+	 */
 	public static void flagSquare(int xPos, int yPos) {
 		xPos -= 1;
 		yPos -= 1;
@@ -735,14 +743,9 @@ public class Minesweeper extends PApplet{
 	}
 	
 	/**
-	 * This method prompts users for an integer with a given promptWord and requires that
-	 * its value be between lowerBound and upperBound
+	 * This method checks if the user wins or loses based on the state
+	 * when it is called.
 	 * 
-	 * @param mineField
-	 *            The 2D array that holds the values corresponding to mine location.
-	 * @param revealedPositions
-	 * 			  The 2D array that holds boolean values that reflect whether or not
-	 * 			  the user has revealed the contents of that tile.
 	 * @return Boolean value representing whether the user wins yet or not.
 	 */
 	public static boolean winCondition () {
