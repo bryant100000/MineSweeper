@@ -10,3 +10,9 @@ ver2.
 - Better user interface using Processing
 - Fomratted interface to display properly
 - Still relies on keyboard input
+
+ver3.
+- Finalized Processing interface
+- Added mouse controls, removed keyboard inputs
+- Fixed flagging, win/loss displays
+- Removed archaic code and adjusted parameters
